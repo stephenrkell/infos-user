@@ -1,7 +1,8 @@
 export MAKEFLAGS    += -rR --no-print-directory
 export q := @
 
-export top-dir := $(CURDIR)
+# we do not change directory, so '.' instead of $(CURDIR) cuts down on noise
+export top-dir := .
 export inc-dir := $(top-dir)/inc
 export crt-dir := $(top-dir)/crt
 export lib-dir := $(top-dir)/lib
@@ -15,6 +16,7 @@ tool-targets := init ls tree shell prio-sched-test sleep-sched-test ticker-sched
 export real-crt-target   := $(bin-dir)/$(crt-target)
 export real-lib-target   := $(bin-dir)/$(lib-target)
 real-tool-targets := $(patsubst %,$(bin-dir)/%,$(tool-targets))
+$(info real-tool-targets is $(real-tool-targets))
 real-tool-clean-targets := $(patsubst %,__clean__$(bin-dir)/%,$(tool-targets))
 
 crt-srcs := $(shell find $(crt-dir) | grep -E "\.cpp$$")
@@ -28,34 +30,78 @@ lib-ldflags :=
 
 fs-target := $(bin-dir)/rootfs.tar
 
-export BUILD-TARGET = $(patsubst $(top-dir)/%,%,$@)
+# lazy macro for lazy people
+BUILD-TARGET = $(patsubst $(top-dir)/%,%,$@)
 
-all: $(real-crt-target) $(real-lib-target) $(real-tool-targets)
+all-fs-targets := $(real-crt-target) $(real-lib-target) $(real-tool-targets)
+
+.PHONY: all clean fs
+all: $(all-fs-targets)
 
 clean: $(real-tool-clean-targets)
 	@echo "  RM    $(real-lib-target) $(lib-objs) $(real-tool-targets)"
-	$(q)rm -f $(real-lib-target) $(real-crt-target) $(crt-objs) $(lib-objs) $(real-tool-targets)
+	$(q)rm -f $(real-lib-target) $(real-crt-target) $(crt-objs) $(lib-objs) $(real-tool-targets) $(all-tool-deps)
 
 fs: $(fs-target)
 
-$(real-crt-target): $(bin-dir) $(crt-objs)
+$(real-crt-target): $(crt-objs)
+	@mkdir -p $(bin-dir)
 	@echo "  AR      $(BUILD-TARGET)"
 	$(q)ar rcs $@ $(crt-objs)
 
-$(real-lib-target): $(bin-dir) $(lib-objs)
+$(real-lib-target): $(lib-objs)
+	@mkdir -p $(bin-dir)
 #	@echo "  LD      $(BUILD-TARGET)"
 # $(q)g++ -shared -o $@ $(lib-ldflags) $(lib-objs)
 	@echo "  AR      $(BUILD-TARGET)"
 	$(q)ar rcs $@ $(lib-objs)
 
-$(bin-dir):
-	mkdir $@
+# This use of recursive 'make' is a problem. If a tool's source files
+# change, we can't see that here, because only Makefile.tool knew
+# how to enumerate them (using 'find'). Anyway we want to use depfiles
+# and to include all the depfiles here. Rather than teach Makefile.tool
+# how to generate depfiles, and iteratively include them somehow, simply
+# absorb Makefile.tool into this file.
+#$(real-tool-targets): $(real-crt-target) $(real-lib-target)
+#	@$(MAKE) -f Makefile.tool TOOL=$(basename $@) $@
+# The following is based on Makefile.tool, macro'd and call'd/eval'd for each tool
 
-$(real-tool-targets): $(real-crt-target) $(real-lib-target) .FORCE
-	@make -f Makefile.tool TOOL=$@
+tool-common-flags := -std=gnu++17 -g -Wall -O3 -nostdlib -nostdinc -ffreestanding -fno-stack-protector -mno-sse -mno-avx -no-pie
+tool-cflags   := $(tool-common-flags) -I$(inc-dir)
+tool-ldflags  := $(tool-common-flags) -static
+# -Wl,-dynamic-linker,__INFOS_DYNAMIC_LINKER__
 
-$(real-tool-clean-targets): .FORCE
-	@make -f Makefile.tool TOOL=$(patsubst __clean__%,%,$@) clean
+# functions for enumerating per-tool src/obj/deps
+# to debug prepend: echo "tool-srcs called for $(1)" 1>&2;
+# and append: | tee /dev/stderr
+tool-srcs = $(shell find $(src-dir)/`basename $(1)` | grep -E "\.cpp$$")
+tool-objs = $(patsubst %.cpp,%.o,$(call tool-srcs,$(1)))
+define tool-rule
+$(t): $$(call tool-objs,$(t)) $$(real-crt-target) $$(real-lib-target)
+	@echo "  LD      $$@"
+	$$(q)g++ -o $$@ $$(tool-ldflags) $$+
+# -L$(bin-dir) -linfos
+endef
+$(foreach t,$(real-tool-targets),$(eval $(tool-rule)))
+
+# we just use -MMD for the tool depfiles, so keep the default name
+tool-deps = $(patsubst %.cpp,%.d,$(call tool-srcs,$(1)))
+all-tool-deps := $(foreach t,$(real-tool-targets),$(call tool-deps,$(t)))
+-include $(all-tool-deps)
+
+define tool-clean-rule
+.PHONY: __clean__$(t)
+__clean__$(t):
+	@echo "  RM    $(t)"
+	$(q)rm -f $(t) $$(call tool-objs,$(t))
+endef
+$(foreach t,$(real-tool-targets),$(eval $(call tool-clean-rule,$(t))))
+
+$(foreach t,$(real-tool-targets),$(call tool-objs,$(t))): %.o: %.cpp
+	@echo "  C++     $(patsubst $(top-dir)/%,%,$@)"
+	$(q)g++ -MMD -c -o $@ $(tool-cflags) $<
+
+# end the bits derived from Makefile.tool
 
 $(lib-objs): %.o: %.cpp
 	@echo "  C++     $(BUILD-TARGET)"
@@ -65,7 +111,7 @@ $(crt-objs): %.o: %.cpp
 	@echo "  C++     $(BUILD-TARGET)"
 	$(q)g++ -c -o $@ $(crt-cxxflags) $<
 
-$(fs-target): all
+$(fs-target): $(all-fs-targets)
 	mkdir -p $(bin-dir)/docs
 	mkdir -p $(bin-dir)/subdir1/subdir11/subdir111
 	mkdir -p $(bin-dir)/subdir1/subdir11/subdir112
