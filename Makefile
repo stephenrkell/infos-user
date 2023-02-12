@@ -33,16 +33,12 @@ fs-target := $(bin-dir)/rootfs.tar
 # lazy macro for lazy people
 BUILD-TARGET = $(patsubst $(top-dir)/%,%,$@)
 
-all-fs-targets := $(real-crt-target) $(real-lib-target) $(real-tool-targets)
-
-.PHONY: all clean fs
-all: $(all-fs-targets)
+.PHONY: fs clean
+fs: $(fs-target)
 
 clean: $(real-tool-clean-targets)
 	@echo "  RM    $(real-lib-target) $(lib-objs) $(real-tool-targets)"
 	$(q)rm -f $(real-lib-target) $(real-crt-target) $(crt-objs) $(lib-objs) $(real-tool-targets) $(all-tool-deps)
-
-fs: $(fs-target)
 
 $(real-crt-target): $(crt-objs)
 	@mkdir -p $(bin-dir)
@@ -60,7 +56,7 @@ $(real-lib-target): $(lib-objs)
 # change, we can't see that here, because only Makefile.tool knew
 # how to enumerate them (using 'find'). Anyway we want to use depfiles
 # and to include all the depfiles here. Rather than teach Makefile.tool
-# how to generate depfiles, and iteratively include them somehow, simply
+# how to generate depfiles, and iteratively include them somehow, we
 # absorb Makefile.tool into this file.
 #$(real-tool-targets): $(real-crt-target) $(real-lib-target)
 #	@$(MAKE) -f Makefile.tool TOOL=$(basename $@) $@
@@ -111,7 +107,7 @@ $(crt-objs): %.o: %.cpp
 	@echo "  C++     $(BUILD-TARGET)"
 	$(q)g++ -c -o $@ $(crt-cxxflags) $<
 
-$(fs-target): $(all-fs-targets)
+$(fs-target): $(real-crt-target) $(real-lib-target) $(real-tool-targets)
 	mkdir -p $(bin-dir)/docs
 	mkdir -p $(bin-dir)/subdir1/subdir11/subdir111
 	mkdir -p $(bin-dir)/subdir1/subdir11/subdir112
