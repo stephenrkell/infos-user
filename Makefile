@@ -21,11 +21,11 @@ real-tool-clean-targets := $(patsubst %,__clean__$(bin-dir)/%,$(tool-targets))
 
 crt-srcs := $(shell find $(crt-dir) | grep -E "\.cpp$$")
 crt-objs := $(crt-srcs:.cpp=.o)
-crt-cxxflags := -g -Wall -Wno-main -no-pie -nostdlib -nostdinc -std=gnu++17 -O3 -I$(inc-dir) -fno-builtin -ffreestanding -mno-sse -mno-avx -fno-stack-protector
+crt-cxxflags := -g -fno-omit-frame-pointer -Wall -Wno-main -no-pie -nostdlib -nostdinc -std=gnu++17 -O3 -I$(inc-dir) -fno-builtin -ffreestanding -mno-sse -mno-avx -fno-stack-protector
 
 lib-srcs := $(shell find $(lib-dir) | grep -E "\.cpp$$")
 lib-objs := $(lib-srcs:.cpp=.o)
-lib-cxxflags := -shared -g -Wall -Wno-main -nostdlib -nostdinc -std=gnu++17 -O3 -I$(inc-dir) -fno-builtin -ffreestanding -mno-sse -mno-avx -fno-stack-protector -fPIC
+lib-cxxflags := -shared -g -fno-omit-frame-pointer -Wall -Wno-main -nostdlib -nostdinc -std=gnu++17 -O3 -I$(inc-dir) -fno-builtin -ffreestanding -mno-sse -mno-avx -fno-stack-protector -fPIC
 lib-ldflags :=
 
 fs-target := $(bin-dir)/rootfs.tar
@@ -62,7 +62,7 @@ $(real-lib-target): $(lib-objs)
 #	@$(MAKE) -f Makefile.tool TOOL=$(basename $@) $@
 # The following is based on Makefile.tool, macro'd and call'd/eval'd for each tool
 
-tool-common-flags := -std=gnu++17 -g -Wall -O3 -nostdlib -nostdinc -ffreestanding -fno-stack-protector -mno-sse -mno-avx -no-pie
+tool-common-flags := -std=gnu++17 -g -fno-omit-frame-pointer -Wall -O3 -nostdlib -nostdinc -ffreestanding -fno-stack-protector -mno-sse -mno-avx -no-pie
 tool-cflags   := $(tool-common-flags) -I$(inc-dir)
 tool-ldflags  := $(tool-common-flags) -static
 # -Wl,-dynamic-linker,__INFOS_DYNAMIC_LINKER__
